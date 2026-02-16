@@ -22,8 +22,52 @@ const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov"];
 /// Supported image extensions.
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp"];
 
+/// Import an HTTP URL into the library. Returns true if imported.
+///
+/// Skips lofty metadata extraction (requires file path).
+/// Title is derived from the URL's last path segment.
+#[cfg(feature = "http")]
+pub fn import_url(shell: &Shell, url: &str) -> bool {
+    let ext = crate::effects::http::extension_from_url(url).unwrap_or_default();
+    let media_type = match classify_extension(&ext) {
+        Some(t) => t,
+        None => MediaType::Audio, // Assume audio for URLs
+    };
+    let format = parse_format(&ext);
+
+    // Derive a title from the URL's last path segment
+    let title = url
+        .split('?').next().unwrap_or(url)
+        .rsplit('/').next()
+        .unwrap_or(url)
+        .to_string();
+
+    let id = stable_id(url, &title);
+    let scroll_path = format!("/amsal/library/{}", id);
+
+    if let Ok(Some(_)) = shell.get(&scroll_path) {
+        return false;
+    }
+
+    let data = serde_json::json!({
+        "id": id,
+        "media_type": media_type,
+        "format": format,
+        "path": url,
+        "title": title,
+    });
+
+    shell.put(&scroll_path, data).is_ok()
+}
+
 /// Import a single file into the library. Returns true if imported.
 pub fn import_file(shell: &Shell, file_path: &str) -> bool {
+    // Handle HTTP URLs
+    #[cfg(feature = "http")]
+    if crate::effects::http::is_http_url(file_path) {
+        return import_url(shell, file_path);
+    }
+
     let path = Path::new(file_path);
     if !path.exists() {
         return false;

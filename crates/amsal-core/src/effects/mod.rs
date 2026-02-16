@@ -1,3 +1,7 @@
+pub mod dsp;
+#[cfg(feature = "http")]
+pub mod http;
+
 /// Trait for audio output backends.
 ///
 /// The engine uses this to abstract over native (cpal) and headless/WASM backends.
@@ -16,6 +20,7 @@ pub trait AudioBackend: Send + Sync {
     fn prepare_next(&self, file_path: &str);
     fn position_ms(&self) -> u64;
     fn duration_ms(&self) -> u64;
+    fn set_dsp(&self, chain: dsp::DspChain);
 }
 
 /// No-op audio backend for headless/WASM use.
@@ -38,6 +43,7 @@ impl AudioBackend for NoopBackend {
     fn prepare_next(&self, _: &str) {}
     fn position_ms(&self) -> u64 { 0 }
     fn duration_ms(&self) -> u64 { 0 }
+    fn set_dsp(&self, _: dsp::DspChain) {}
 }
 
 #[cfg(feature = "native")]

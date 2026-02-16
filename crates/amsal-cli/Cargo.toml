@@ -10,7 +10,7 @@ name = "amsal"
 path = "src/main.rs"
 
 [dependencies]
-amsal-core = { path = "../amsal-core" }
+amsal-core = { path = "../amsal-core", features = ["http"] }
 nine-s-shell = { workspace = true }
 serde_json = { workspace = true }
 env_logger = { workspace = true }

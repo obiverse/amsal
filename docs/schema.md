@@ -122,6 +122,27 @@ Stored under `/amsal/art/` (not `/amsal/library/`) to avoid polluting library li
 
 ---
 
+### DSP EQ Chain — `/amsal/playback/eq`
+
+```json
+{
+  "filters": [
+    {"type": "eq", "freq_hz": 80, "gain_db": 3.0, "q": 0.7},
+    {"type": "eq", "freq_hz": 3000, "gain_db": -2.0, "q": 1.0},
+    {"type": "gain", "db": -1.5}
+  ]
+}
+```
+
+| Filter Type | Fields | Notes |
+|-------------|--------|-------|
+| `eq` | `freq_hz`, `gain_db`, `q` | Peaking EQ biquad filter |
+| `gain` | `db` | Simple gain (positive = boost, negative = cut) |
+
+Write to this path to hot-swap the DSP chain. The engine polls scroll version every 250ms and rebuilds the filter chain on change. Filters are applied in order in the cpal output callback, after volume.
+
+---
+
 ### Playback Command — `/amsal/playback/command`
 
 Write to this path to trigger playback effects. Tagged enum with `action` field.

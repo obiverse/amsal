@@ -18,6 +18,8 @@
 //!   amsal repeat <off|all|one> Set repeat mode
 //!   amsal history [limit]      Recent play history
 //!   amsal stats <id>           Track statistics
+//!   amsal eq '<json>'          Set DSP EQ chain
+//!   amsal daemon               Run as background daemon
 
 use amsal_core::playback::{PlaybackCommand, RepeatMode};
 use amsal_core::Engine;
@@ -61,6 +63,8 @@ fn main() {
         "repeat" => cmd_repeat(&engine, &args[1..]),
         "history" => cmd_history(&engine, &args[1..]),
         "stats" => cmd_stats(&engine, &args[1..]),
+        "eq" => cmd_eq(&engine, &args[1..]),
+        "daemon" => cmd_daemon(&engine),
         other => {
             eprintln!("unknown command: {}", other);
             print_usage();
@@ -68,6 +72,7 @@ fn main() {
     }
 
     engine.shutdown();
+    remove_pid_file();
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +309,32 @@ fn cmd_stats(engine: &Engine, args: &[String]) {
     }
 }
 
+fn cmd_daemon(engine: &Engine) {
+    write_pid_file();
+    engine.start();
+    println!("amsal daemon running (pid {})", std::process::id());
+    println!("control from another terminal: amsal pause, amsal volume 50, etc.");
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+fn cmd_eq(engine: &Engine, args: &[String]) {
+    if args.is_empty() {
+        eprintln!("usage: amsal eq '<json>'");
+        eprintln!("  example: amsal eq '{{\"filters\":[{{\"type\":\"eq\",\"freq_hz\":80,\"gain_db\":6.0,\"q\":0.7}}]}}'");
+        return;
+    }
+    let json_str = args.join(" ");
+    match serde_json::from_str::<serde_json::Value>(&json_str) {
+        Ok(value) => {
+            engine.shell().put("/amsal/playback/eq", value).ok();
+            println!("eq updated");
+        }
+        Err(e) => eprintln!("invalid JSON: {}", e),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -363,6 +394,22 @@ fn fmt_time(ms: u64) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
 }
 
+fn pid_file_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    format!("{}/.amsal/daemon.pid", home)
+}
+
+fn write_pid_file() {
+    std::fs::write(pid_file_path(), std::process::id().to_string()).ok();
+}
+
+fn remove_pid_file() {
+    let path = pid_file_path();
+    if std::path::Path::new(&path).exists() {
+        std::fs::remove_file(&path).ok();
+    }
+}
+
 fn print_usage() {
     println!("amsal - CLI music player");
     println!();
@@ -386,4 +433,6 @@ fn print_usage() {
     println!("  repeat <off|all|one>   Set repeat mode");
     println!("  history [limit]        Recent play history");
     println!("  stats <id>             Track statistics");
+    println!("  eq '<json>'            Set DSP EQ chain");
+    println!("  daemon                 Run as background daemon");
 }

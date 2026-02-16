@@ -58,6 +58,8 @@ struct AudioState {
     next_probe: Mutex<Option<(u32, u32, String)>>,
     /// Handles for decoder + output threads (joined on stop).
     threads: Mutex<Vec<thread::JoinHandle<()>>>,
+    /// DSP filter chain — applied in cpal callback after volume.
+    dsp_chain: parking_lot::RwLock<Option<super::dsp::DspChain>>,
 }
 
 /// Simple ring buffer for f32 samples.
@@ -189,6 +191,7 @@ impl AudioEffect {
                 error: AtomicBool::new(false),
                 next_probe: Mutex::new(None),
                 threads: Mutex::new(Vec::new()),
+                dsp_chain: parking_lot::RwLock::new(None),
             }),
         }
     }
@@ -310,6 +313,10 @@ impl AudioEffect {
     pub fn duration_ms(&self) -> u64 {
         self.state.duration_ms.load(Ordering::SeqCst)
     }
+
+    pub fn set_dsp(&self, chain: super::dsp::DspChain) {
+        *self.state.dsp_chain.write() = Some(chain);
+    }
 }
 
 impl Default for AudioEffect {
@@ -332,18 +339,33 @@ impl super::AudioBackend for AudioEffect {
     fn prepare_next(&self, file_path: &str) { self.prepare_next(file_path) }
     fn position_ms(&self) -> u64 { self.position_ms() }
     fn duration_ms(&self) -> u64 { self.duration_ms() }
+    fn set_dsp(&self, chain: super::dsp::DspChain) { self.set_dsp(chain) }
 }
 
-/// Decode a file using symphonia and push samples to the ring buffer.
+/// Decode a file (or HTTP URL) using symphonia and push samples to the ring buffer.
 fn decode_to_ring(file_path: &str, state: &AudioState) -> Result<(), Box<dyn std::error::Error>> {
-    let path = Path::new(file_path);
-    let file = File::open(path)?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
-
     let mut hint = Hint::new();
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        hint.with_extension(ext);
-    }
+
+    let mss = if file_path.starts_with("http://") || file_path.starts_with("https://") {
+        #[cfg(feature = "http")]
+        {
+            if let Some(ext) = super::http::extension_from_url(file_path) {
+                hint.with_extension(&ext);
+            }
+            super::http::open_url(file_path)?
+        }
+        #[cfg(not(feature = "http"))]
+        {
+            return Err("HTTP support requires the 'http' feature".into());
+        }
+    } else {
+        let path = Path::new(file_path);
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            hint.with_extension(ext);
+        }
+        let file = File::open(path)?;
+        MediaSourceStream::new(Box::new(file), Default::default())
+    };
 
     let probed = symphonia::default::get_probe().format(
         &hint,
@@ -533,6 +555,12 @@ fn output_from_ring(state: Arc<AudioState>) -> Result<(), Box<dyn std::error::Er
             let vol = cb_state.volume.load(Ordering::SeqCst) as f32 / 100.0;
             for s in data.iter_mut() {
                 *s *= vol;
+            }
+            // DSP chain after volume
+            if let Some(chain) = &mut *cb_state.dsp_chain.write() {
+                let ch = cb_state.channels.load(Ordering::SeqCst) as u16;
+                let sr = cb_state.sample_rate.load(Ordering::SeqCst);
+                chain.process(data, ch, sr);
             }
         },
         move |err| {

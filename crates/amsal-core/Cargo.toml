@@ -9,6 +9,7 @@ authors.workspace = true
 [features]
 default = ["native"]
 native = ["dep:cpal"]
+http = ["dep:ureq"]
 
 [dependencies]
 nine-s-core = { workspace = true }
@@ -23,6 +24,7 @@ parking_lot = { workspace = true }
 beeclock-core = { workspace = true }
 base64 = { workspace = true }
 log = { workspace = true }
+ureq = { workspace = true, optional = true }
 
 [dev-dependencies]
 nine-s-store = { workspace = true }

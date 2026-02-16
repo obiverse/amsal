@@ -12,7 +12,7 @@ use nine_s_core::errors::NineSResult;
 use nine_s_core::scroll::Scroll;
 use nine_s_shell::Shell;
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -47,6 +47,9 @@ pub struct Engine {
     shutdown: Arc<AtomicBool>,
     /// Handles for joining background threads.
     handles: Mutex<Vec<JoinHandle<()>>>,
+    /// Last-processed scroll versions (shared between in-process watcher + heartbeat).
+    last_cmd_version: Arc<AtomicU64>,
+    last_import_version: Arc<AtomicU64>,
 }
 
 impl Engine {
@@ -73,6 +76,8 @@ impl Engine {
             queue: Arc::new(Mutex::new(initial_queue)),
             shutdown: Arc::new(AtomicBool::new(false)),
             handles: Mutex::new(Vec::new()),
+            last_cmd_version: Arc::new(AtomicU64::new(0)),
+            last_import_version: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -115,6 +120,7 @@ impl Engine {
         let state = Arc::clone(&self.state);
         let queue = Arc::clone(&self.queue);
         let shutdown = Arc::clone(&self.shutdown);
+        let last_cmd_version = Arc::clone(&self.last_cmd_version);
 
         thread::spawn(move || {
             let rx = match shell.on(paths::PLAYBACK_COMMAND) {
@@ -129,6 +135,8 @@ impl Engine {
                 if shutdown.load(Ordering::SeqCst) {
                     break;
                 }
+                // Mark version as handled so heartbeat doesn't re-process
+                last_cmd_version.store(scroll.metadata.version, Ordering::SeqCst);
                 if let Some(cmd) = PlaybackCommand::from_value(&scroll.data) {
                     handle_playback(&shell, &*audio, &state, &queue, cmd);
                 }
@@ -139,6 +147,7 @@ impl Engine {
     fn start_import_loop(&self) -> JoinHandle<()> {
         let shell = Arc::clone(&self.shell);
         let shutdown = Arc::clone(&self.shutdown);
+        let last_import_version = Arc::clone(&self.last_import_version);
 
         thread::spawn(move || {
             let rx = match shell.on(paths::IMPORT_REQUEST) {
@@ -153,6 +162,8 @@ impl Engine {
                 if shutdown.load(Ordering::SeqCst) {
                     break;
                 }
+                // Mark version as handled so heartbeat doesn't re-process
+                last_import_version.store(scroll.metadata.version, Ordering::SeqCst);
                 if let Some(dir) = scroll.data["dir"].as_str() {
                     log_err(shell.put(
                         paths::IMPORT_STATUS,
@@ -188,9 +199,12 @@ impl Engine {
         let state = Arc::clone(&self.state);
         let queue = Arc::clone(&self.queue);
         let shutdown = Arc::clone(&self.shutdown);
+        let last_cmd_version = Arc::clone(&self.last_cmd_version);
+        let last_import_version = Arc::clone(&self.last_import_version);
 
         thread::spawn(move || {
             let mut clock = build_clock(&shell);
+            let mut last_eq_version: u64 = 0;
 
             while !shutdown.load(Ordering::SeqCst) {
                 thread::sleep(std::time::Duration::from_millis(250));
@@ -200,6 +214,51 @@ impl Engine {
                 }
 
                 let outcome = clock.tick();
+
+                // --- DSP chain hot-swap via scroll version ---
+                let eq_version = shell.get(paths::PLAYBACK_EQ)
+                    .ok().flatten().map(|s| s.metadata.version).unwrap_or(0);
+                if eq_version != last_eq_version && eq_version > 0 {
+                    last_eq_version = eq_version;
+                    if let Ok(Some(scroll)) = shell.get(paths::PLAYBACK_EQ) {
+                        let sr = 44100u32; // Default; actual rate is in audio state
+                        let ch = 2u16;
+                        let chain = crate::effects::dsp::chain_from_value(&scroll.data, sr, ch);
+                        audio.set_dsp(chain);
+                    }
+                }
+
+                // --- Cross-process command polling via scroll version ---
+                if let Ok(Some(scroll)) = shell.get(paths::PLAYBACK_COMMAND) {
+                    let seen = last_cmd_version.load(Ordering::SeqCst);
+                    if scroll.metadata.version > seen {
+                        last_cmd_version.store(scroll.metadata.version, Ordering::SeqCst);
+                        if let Some(cmd) = PlaybackCommand::from_value(&scroll.data) {
+                            handle_playback(&shell, &*audio, &state, &queue, cmd);
+                        }
+                    }
+                }
+
+                // --- Cross-process import polling via scroll version ---
+                if let Ok(Some(scroll)) = shell.get(paths::IMPORT_REQUEST) {
+                    let seen = last_import_version.load(Ordering::SeqCst);
+                    if scroll.metadata.version > seen {
+                        last_import_version.store(scroll.metadata.version, Ordering::SeqCst);
+                        if let Some(dir) = scroll.data["dir"].as_str() {
+                            log_err(shell.put(
+                                paths::IMPORT_STATUS,
+                                serde_json::json!({"scanning": true, "dir": dir}),
+                            ), "import status scanning");
+                            let imported = import::scan_directory(&shell, dir);
+                            log_err(shell.put(
+                                paths::IMPORT_STATUS,
+                                serde_json::json!({"scanning": false, "imported": imported, "dir": dir}),
+                            ), "import status complete");
+                        } else if let Some(file) = scroll.data["file"].as_str() {
+                            import::import_file(&shell, file);
+                        }
+                    }
+                }
 
                 // --- Audio error recovery ---
                 if audio.is_error() {

@@ -11,7 +11,7 @@ Layer 2: Engine (scroll read/write, command dispatch, heartbeat)
 Layer 3: FFI (C API for Flutter, Swift, Kotlin, WASM)
 ```
 
-**Audio pipeline:** symphonia (decode) → SampleRing (buffer) → cpal (output)
+**Audio pipeline:** symphonia (decode) → SampleRing (buffer) → cpal (output) → DSP chain
 
 **Supported formats:** MP3, FLAC, AAC, OGG, WAV, ALAC, OPUS, WMA, AIFF, MP4, WEBM, MKV
 
@@ -27,6 +27,9 @@ Layer 3: FFI (C API for Flutter, Swift, Kotlin, WASM)
 - Configurable clock with partitions and pulses
 - Gapless pre-probe for reduced track transition latency
 - Channel adaptation (mono↔stereo, up/down-mix)
+- DSP scroll chain (biquad EQ + gain, hot-swappable via scrolls)
+- Cross-process control (daemon mode, version-based polling)
+- HTTP streaming (feature-gated, symphonia + ureq)
 - 36-function FFI C API (v4)
 
 ## Monorepo Layout
@@ -68,6 +71,9 @@ amsal shuffle on                 # Toggle shuffle
 amsal repeat all                 # Repeat mode (off/all/one)
 amsal history                    # Recent plays
 amsal stats <id>                 # Track statistics
+amsal eq '{"filters":[...]}'     # DSP EQ chain (hot-swap)
+amsal daemon                     # Run as background daemon
+amsal play https://url/song.mp3  # HTTP streaming
 ```
 
 ## Build
@@ -88,7 +94,7 @@ sudo apt-get install libasound2-dev
 cargo test
 ```
 
-66 tests (51 core + 15 FFI integration).
+75 tests (60 core + 15 FFI integration).
 
 ## FFI Usage
 
