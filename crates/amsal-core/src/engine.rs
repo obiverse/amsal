@@ -18,7 +18,9 @@ use std::thread::{self, JoinHandle};
 
 use beeclock_core::Clock;
 
+#[cfg(feature = "native")]
 use crate::effects::audio::AudioEffect;
+use crate::effects::AudioBackend;
 use crate::effects::import;
 use crate::models::playback::PlaybackCommand;
 use crate::models::scroll_ext::{
@@ -35,7 +37,7 @@ use serde_json::Value;
 /// The amsal media engine.
 pub struct Engine {
     shell: Arc<Shell>,
-    audio: Arc<AudioEffect>,
+    audio: Arc<dyn AudioBackend>,
     /// Authoritative playback state — protected by mutex.
     /// Written to scroll as a side-effect for watchers.
     state: Arc<Mutex<Value>>,
@@ -48,8 +50,16 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Boot the engine with a 9S shell.
+    /// Boot the engine with a 9S shell and the native (cpal) audio backend.
+    #[cfg(feature = "native")]
     pub fn new(shell: Shell) -> Self {
+        Self::with_backend(shell, Arc::new(AudioEffect::new()))
+    }
+
+    /// Boot the engine with a custom audio backend.
+    ///
+    /// Use `NoopBackend` for headless/WASM (data-only, no audio output).
+    pub fn with_backend(shell: Shell, audio: Arc<dyn AudioBackend>) -> Self {
         let initial_state = default_playback_state();
         let initial_queue = default_queue_state();
 
@@ -58,7 +68,7 @@ impl Engine {
 
         Self {
             shell: Arc::new(shell),
-            audio: Arc::new(AudioEffect::new()),
+            audio,
             state: Arc::new(Mutex::new(initial_state)),
             queue: Arc::new(Mutex::new(initial_queue)),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -120,7 +130,7 @@ impl Engine {
                     break;
                 }
                 if let Some(cmd) = PlaybackCommand::from_value(&scroll.data) {
-                    handle_playback(&shell, &audio, &state, &queue, cmd);
+                    handle_playback(&shell, &*audio, &state, &queue, cmd);
                 }
             }
         })
@@ -212,7 +222,7 @@ impl Engine {
                         if let Some(id) = current_id {
                             record_play_event(&shell, &id, audio.position_ms());
                         }
-                        advance_queue(&shell, &audio, &state, &queue);
+                        advance_queue(&shell, &*audio, &state, &queue);
                     }
                 } else {
                     let pos = audio.position_ms();
@@ -299,8 +309,8 @@ impl Engine {
         &self.shell
     }
 
-    pub fn audio(&self) -> &AudioEffect {
-        &self.audio
+    pub fn audio(&self) -> &dyn AudioBackend {
+        &*self.audio
     }
 
     /// Add a media item to the library. `data` is the item JSON.
@@ -785,7 +795,7 @@ fn record_play_event(shell: &Shell, media_id: &str, duration_played_ms: u64) {
 // Effect handlers (pure functions)
 // ---------------------------------------------------------------------------
 
-fn handle_playback(shell: &Shell, audio: &AudioEffect, state: &Mutex<Value>, queue: &Mutex<Value>, cmd: PlaybackCommand) {
+fn handle_playback(shell: &Shell, audio: &dyn AudioBackend, state: &Mutex<Value>, queue: &Mutex<Value>, cmd: PlaybackCommand) {
     match cmd {
         PlaybackCommand::Play { ref id } => {
             let path = paths::library_path(id);
@@ -857,8 +867,10 @@ fn handle_playback(shell: &Shell, audio: &AudioEffect, state: &Mutex<Value>, que
                         .map(|a| a.len())
                         .unwrap_or(0);
                     let idx = data["index"].as_u64().unwrap_or(0) as usize;
-                    data["shuffle_order"] =
-                        serde_json::to_value(generate_shuffle_order(len, idx)).unwrap();
+                    data["shuffle_order"] = serde_json::to_value(
+                        generate_shuffle_order(len, idx),
+                    )
+                    .unwrap_or_default();
                     data["index"] = 0.into();
                 } else {
                     // Resolve actual item index before removing shuffle order
@@ -880,7 +892,7 @@ fn handle_playback(shell: &Shell, audio: &AudioEffect, state: &Mutex<Value>, que
     }
 }
 
-fn advance_queue(shell: &Shell, audio: &AudioEffect, state: &Mutex<Value>, queue: &Mutex<Value>) {
+fn advance_queue(shell: &Shell, audio: &dyn AudioBackend, state: &Mutex<Value>, queue: &Mutex<Value>) {
     // Read repeat mode from state (lock ordering: state before queue)
     let repeat = {
         let guard = state.lock();
@@ -928,7 +940,7 @@ fn advance_queue(shell: &Shell, audio: &AudioEffect, state: &Mutex<Value>, queue
     }
 }
 
-fn retreat_queue(shell: &Shell, audio: &AudioEffect, state: &Mutex<Value>, queue: &Mutex<Value>) {
+fn retreat_queue(shell: &Shell, audio: &dyn AudioBackend, state: &Mutex<Value>, queue: &Mutex<Value>) {
     let play_id = {
         let mut data = queue.lock();
         let items = match data["items"].as_array() {

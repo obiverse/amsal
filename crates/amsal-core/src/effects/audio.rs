@@ -318,6 +318,22 @@ impl Default for AudioEffect {
     }
 }
 
+impl super::AudioBackend for AudioEffect {
+    fn play(&self, file_path: &str) { self.play(file_path) }
+    fn pause(&self) { self.pause() }
+    fn resume(&self) { self.resume() }
+    fn stop(&self) { self.stop() }
+    fn seek(&self, position_ms: u64) { self.seek(position_ms) }
+    fn set_volume(&self, volume: f32) { self.set_volume(volume) }
+    fn is_playing(&self) -> bool { self.is_playing() }
+    fn is_paused(&self) -> bool { self.is_paused() }
+    fn is_finished(&self) -> bool { self.is_finished() }
+    fn is_error(&self) -> bool { self.is_error() }
+    fn prepare_next(&self, file_path: &str) { self.prepare_next(file_path) }
+    fn position_ms(&self) -> u64 { self.position_ms() }
+    fn duration_ms(&self) -> u64 { self.duration_ms() }
+}
+
 /// Decode a file using symphonia and push samples to the ring buffer.
 fn decode_to_ring(file_path: &str, state: &AudioState) -> Result<(), Box<dyn std::error::Error>> {
     let path = Path::new(file_path);

@@ -16,6 +16,7 @@ pub mod engine;
 pub mod models;
 pub mod paths;
 
+pub use effects::{AudioBackend, NoopBackend};
 pub use engine::Engine;
 pub use models::*;
 
@@ -36,7 +37,15 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         std::env::set_var("NINE_S_ROOT", dir.path());
         let shell = Shell::open(app, &[]).expect("shell");
+
+        #[cfg(feature = "native")]
         let engine = Engine::new(shell);
+        #[cfg(not(feature = "native"))]
+        let engine = Engine::with_backend(
+            shell,
+            std::sync::Arc::new(effects::NoopBackend),
+        );
+
         (dir, engine, guard)
     }
 
@@ -589,6 +598,7 @@ mod tests {
     // -------------------------------------------------------------------
 
     #[test]
+    #[cfg(feature = "native")]
     fn prepare_next_smoke_test() {
         use crate::effects::audio::AudioEffect;
         let audio = AudioEffect::new();
