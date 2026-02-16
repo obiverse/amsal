@@ -804,7 +804,11 @@ fn handle_playback(shell: &Shell, audio: &dyn AudioBackend, state: &Mutex<Value>
             if let Ok(Some(scroll)) = shell.get(&path) {
                 if let Some(file_path) = scroll.data["path"].as_str() {
                     audio.play(file_path);
-                    let duration = scroll.data["duration_ms"].as_u64().unwrap_or(0);
+                    let d = &scroll.data;
+                    let duration = d["duration_ms"].as_u64().unwrap_or(0);
+                    let title = d["title"].as_str().unwrap_or("Unknown");
+                    let artist = d["artist"].as_str().unwrap_or("Unknown");
+                    let album = d["album"].as_str().unwrap_or("");
                     // Single snapshot — no interleaved mutations
                     let guard = state.lock();
                     let volume = guard["volume"].as_f64().unwrap_or(0.8);
@@ -816,6 +820,9 @@ fn handle_playback(shell: &Shell, audio: &dyn AudioBackend, state: &Mutex<Value>
                         state,
                         serde_json::json!({
                             "current_id": id,
+                            "title": title,
+                            "artist": artist,
+                            "album": album,
                             "playing": true,
                             "position_ms": 0,
                             "duration_ms": duration,

@@ -81,24 +81,31 @@ fn cmd_play(engine: &Engine, args: &[String]) {
     }
     let file = &args[0];
 
-    // Import the file first
+    // Start engine loops first so import watcher is ready
+    engine.start();
+
+    // Import the file (watcher picks up the request scroll)
     if let Err(e) = engine.import_file(file) {
         eprintln!("import failed: {}", e);
         return;
     }
 
-    // Start engine loops so playback command is processed
-    engine.start();
-
-    // Wait briefly for import effect to process
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    // Find the imported item by file path
-    let id = match find_id_by_path(engine, file) {
-        Some(id) => id,
-        None => {
-            eprintln!("could not find imported item for: {}", file);
-            return;
+    // Poll for the imported item (import effect runs async)
+    let id = {
+        let mut found = None;
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Some(id) = find_id_by_path(engine, file) {
+                found = Some(id);
+                break;
+            }
+        }
+        match found {
+            Some(id) => id,
+            None => {
+                eprintln!("could not find imported item for: {}", file);
+                return;
+            }
         }
     };
 
@@ -193,14 +200,17 @@ fn cmd_search(engine: &Engine, args: &[String]) {
 fn cmd_now(engine: &Engine) {
     let state = engine.playback_state();
     let playing = state["playing"].as_bool().unwrap_or(false);
+    let has_track = state["current_id"].as_str().is_some();
     let pos = state["position_ms"].as_u64().unwrap_or(0);
     let dur = state["duration_ms"].as_u64().unwrap_or(0);
-    let title = state["title"].as_str().unwrap_or("Nothing playing");
-    let artist = state["artist"].as_str().unwrap_or("");
+    let title = state["title"].as_str().unwrap_or("Unknown");
+    let artist = state["artist"].as_str().unwrap_or("Unknown");
+    let vol = state["volume"].as_f64().unwrap_or(0.8);
 
-    if playing {
-        println!("{} — {}", title, artist);
-        println!("  {} / {}", fmt_time(pos), fmt_time(dur));
+    if has_track {
+        let status = if playing { "playing" } else { "paused" };
+        println!("{} — {}  [{}]", title, artist, status);
+        println!("  {} / {}  vol: {}%", fmt_time(pos), fmt_time(dur), (vol * 100.0) as u32);
     } else {
         println!("stopped");
     }
@@ -299,14 +309,25 @@ fn cmd_stats(engine: &Engine, args: &[String]) {
 // ---------------------------------------------------------------------------
 
 fn find_id_by_path(engine: &Engine, file: &str) -> Option<String> {
-    let abs = std::fs::canonicalize(file).ok()?;
-    let abs_str = abs.to_string_lossy();
+    let canonical = std::fs::canonicalize(file).ok();
     let paths = engine.list_library().ok()?;
     for path in &paths {
         if let Ok(Some(scroll)) = engine.shell().get(path) {
             if let Some(p) = scroll.data["path"].as_str() {
-                if p == abs_str.as_ref() {
+                // Match raw path or canonicalized path
+                if p == file {
                     return path.rsplit('/').next().map(String::from);
+                }
+                if let Some(ref canon) = canonical {
+                    if p == canon.to_string_lossy().as_ref() {
+                        return path.rsplit('/').next().map(String::from);
+                    }
+                    // Stored path might also need canonicalization
+                    if let Ok(stored_canon) = std::fs::canonicalize(p) {
+                        if stored_canon == *canon {
+                            return path.rsplit('/').next().map(String::from);
+                        }
+                    }
                 }
             }
         }

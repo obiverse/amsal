@@ -94,6 +94,9 @@ Stored under `/amsal/art/` (not `/amsal/library/`) to avoid polluting library li
 ```json
 {
   "current_id": "song_mp3_abc123",
+  "title": "Broken ft Lanjo",
+  "artist": "Artist Name",
+  "album": "Album Name",
   "playing": true,
   "position_ms": 45000,
   "duration_ms": 240000,
@@ -106,6 +109,9 @@ Stored under `/amsal/art/` (not `/amsal/library/`) to avoid polluting library li
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `current_id` | string\|null | null | Currently playing item ID |
+| `title` | string | "Unknown" | Track title from library metadata |
+| `artist` | string | "Unknown" | Artist name from library metadata |
+| `album` | string | "" | Album name from library metadata |
 | `playing` | bool | false | Whether audio is playing |
 | `position_ms` | u64 | 0 | Current playback position |
 | `duration_ms` | u64 | 0 | Total track duration |
