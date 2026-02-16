@@ -9,6 +9,9 @@ cargo build --verbose
 echo "--- test ---"
 cargo test --verbose
 
+echo "--- cli ---"
+cargo build -p amsal-cli --verbose
+
 echo "--- release build ---"
 cargo build --release
 

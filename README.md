@@ -29,6 +29,47 @@ Layer 3: FFI (C API for Flutter, Swift, Kotlin, WASM)
 - Channel adaptation (mono↔stereo, up/down-mix)
 - 36-function FFI C API (v4)
 
+## Monorepo Layout
+
+```
+amsal/
+├── crates/
+│   ├── amsal-core/    # Library: engine, effects, models
+│   ├── amsal-ffi/     # C FFI (36 functions, v4)
+│   └── amsal-cli/     # CLI player binary
+├── apps/              # Future non-Rust apps (Flutter, web)
+├── scripts/           # Build helpers
+├── docs/              # Schema docs
+└── ci.sh              # Local CI script
+```
+
+## CLI Player
+
+Install:
+
+```bash
+cargo install --path crates/amsal-cli
+```
+
+Usage:
+
+```bash
+amsal play song.mp3              # Import + play a file
+amsal import ~/Music             # Scan directory
+amsal list                       # List library
+amsal search "miles davis"       # Search library
+amsal now                        # Current track + position
+amsal pause / resume / stop      # Playback control
+amsal next / prev                # Queue navigation
+amsal seek 90                    # Seek to 1:30
+amsal volume 80                  # Set volume (0-100)
+amsal queue id1 id2 id3          # Set queue
+amsal shuffle on                 # Toggle shuffle
+amsal repeat all                 # Repeat mode (off/all/one)
+amsal history                    # Recent plays
+amsal stats <id>                 # Track statistics
+```
+
 ## Build
 
 ```bash

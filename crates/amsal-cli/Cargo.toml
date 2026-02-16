@@ -1,0 +1,17 @@
+[package]
+name = "amsal-cli"
+description = "CLI music player powered by amsal"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "amsal"
+path = "src/main.rs"
+
+[dependencies]
+amsal-core = { path = "../amsal-core" }
+nine-s-shell = { workspace = true }
+serde_json = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
