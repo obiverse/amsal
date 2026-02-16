@@ -1,0 +1,25 @@
+[package]
+name = "amsal-ffi"
+description = "C FFI surface for amsal — embeddable in Flutter, web, native apps"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+amsal-core = { path = "../amsal-core" }
+nine-s-core = { workspace = true }
+nine-s-shell = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+nine-s-store = { workspace = true }
+nine-s-kernel = { workspace = true }
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+once_cell = "1.20"

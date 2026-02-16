@@ -1,0 +1,47 @@
+[workspace]
+members = ["crates/amsal-core", "crates/amsal-ffi"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+authors = ["OBIVERSE contributors"]
+
+[workspace.dependencies]
+# 9S substrate (from beebank workspace)
+nine-s-core = { git = "https://github.com/obiverse/beebank", package = "nine-s-core", features = ["std-channel"] }
+nine-s-store = { git = "https://github.com/obiverse/beebank", package = "nine-s-store", features = ["std-channel"] }
+nine-s-kernel = { git = "https://github.com/obiverse/beebank", package = "nine-s-kernel", features = ["std-channel"] }
+nine-s-shell = { git = "https://github.com/obiverse/beebank", package = "nine-s-shell", features = ["std-channel"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+
+# Audio decode (pure Rust, no C deps)
+symphonia = { version = "0.5", features = ["mp3", "flac", "aac", "ogg", "wav", "alac", "pcm"] }
+
+# Audio output (cross-platform: CoreAudio / ALSA / WASAPI)
+cpal = "0.15"
+
+# Metadata extraction (ID3, Vorbis, MP4 tags — pure Rust)
+lofty = "0.21"
+
+# Clock (from beeclock workspace)
+beeclock-core = { git = "https://github.com/obiverse/beeclock", package = "beeclock-core" }
+
+# Base64 encoding (album art)
+base64 = "0.22"
+
+# Logging
+log = "0.4"
+
+# Concurrency
+parking_lot = "0.12"
+
+# Testing
+tempfile = "3.10"
