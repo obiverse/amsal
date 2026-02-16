@@ -305,10 +305,12 @@ impl Engine {
     // Public API — all scroll operations
     // -----------------------------------------------------------------------
 
+    /// Get reference to the 9S shell.
     pub fn shell(&self) -> &Shell {
         &self.shell
     }
 
+    /// Get reference to the audio backend.
     pub fn audio(&self) -> &dyn AudioBackend {
         &*self.audio
     }

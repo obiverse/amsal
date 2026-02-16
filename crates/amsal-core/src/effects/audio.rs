@@ -364,7 +364,7 @@ fn decode_to_ring(file_path: &str, state: &AudioState) -> Result<(), Box<dyn std
 
     // Compute duration from n_frames if available
     if let Some(n_frames) = track.codec_params.n_frames {
-        let duration_ms = (n_frames as u64 * 1000) / sample_rate as u64;
+        let duration_ms = (n_frames * 1000) / sample_rate as u64;
         state.duration_ms.store(duration_ms, Ordering::SeqCst);
     }
 
